@@ -19,7 +19,8 @@ option --timerange allows to calculate average values during the Working Hours. 
 If no options --start or --end, the last mounth is used as the default time range.
 
 ```erb
-./reporting_rrd.pl --hostfile <myhosts.txt> (text file with one hostname by line)
+./reporting_rrd.pl --hostgroup <host_group_name> (if option --hostfile not used)
+                   --hostfile <myhosts.txt> (text file with one hostname by line)
                    --service <name_of_the_service>
                    [--metric <name_of_the_metric>]
                    [--start <DD-MM-YYYY>]

@@ -32,6 +32,7 @@
 # 24/12/2014 18                       SGA          add option --csv
 # 20/04/2015 19                       SGA          get the name of the centreon_storage database
 # 27/04/2015 20                       SGA          change for the options --start --end optional
+# 31/08/2015 21                       SGA          add the option --hostgroup
 #======================================================================
 
 use strict;
@@ -40,6 +41,7 @@ use Getopt::Long;
 use Time::Local;
 
 my $hostfile=""; # option --hostfile
+my $hostgroup=""; # option --hostgroup
 my $servicefilter=""; # option --service
 my $metricfilter=""; # option --metric
 my $start=""; # option --start
@@ -60,6 +62,7 @@ my $help;
 
 GetOptions (
 "hostfile=s" => \$hostfile, # string
+"hostgroup=s" => \$hostgroup, # string
 "service=s" => \$servicefilter, # string
 "metric=s" => \$metricfilter, # string
 "start=s" => \$start, # integer
@@ -82,7 +85,9 @@ my $centreon_conf="/etc/centreon/centreon.conf.php";
 my $hostCentstorage; # sql information 
 my $user; # sql information 
 my $password; # sql information 
-my $dbnameCentstorage; # sql information 
+my $dbcstg; # sql information 
+my $db; # sql information
+my $sqlprefix = "";
 
 my $sqlline=0; # line counter
 my ($hostname, $service, $metric, $unit, $metric_id); # for reading the sql result
@@ -97,9 +102,10 @@ my $key;
 # HELP
 ###############################
 
-if (($help) || ($servicefilter eq "") || ($hostfile eq ""))
+if (($help) || ($servicefilter eq "") || (($hostfile eq "") && ($hostgroup eq "")))
 {
-	print"reporting_rrd.pl --hostfile <myhosts.txt> (text file with one hostname by line)
+	print"reporting_rrd.pl --hostgroup <host_group_name> (if option --hostfile not used)
+                 [--hostfile <myhosts.txt> (text file with one hostname by line)]
                  --service <name_of_the_service>
                  [--metric <name_of_the_metric>]
                  [--start <DD-MM-YYYY>] default : start & end date is the last month
@@ -155,6 +161,8 @@ print "DEBUG : end=$end => end_epoch=$end_epoch\n" if $verbose;
 #$conf_centreon['hostCentstorage'] = "XX.YY.ZZZ.XXX";
 #$conf_centreon['user'] = "centreon";
 #$conf_centreon['password'] = "XXXXXXXXX";
+#$conf_centreon['db'] = "centreon2";
+#$conf_centreon['dbcstg'] = "centreon2_storage";
 open (CENTREONFD, "$centreon_conf") or die "Can't open centreon conf  : $centreon_conf\n" ; # reading
 while (<CENTREONFD>)
 {
@@ -163,11 +171,10 @@ while (<CENTREONFD>)
 	if ($line =~ /^\$conf_centreon\['hostCentstorage'\] = "(.*)";$/) { $hostCentstorage = $1; }
 	if ($line =~ /^\$conf_centreon\['user'\] = "(.*)";$/) { $user = $1; }
 	if ($line =~ /^\$conf_centreon\['password'\] = "(.*)";$/) { $password = $1; }
-	if ($line =~ /^\$conf_centreon\['dbcstg'\] = "(.*)";$/) { $dbnameCentstorage = $1; }
+	if ($line =~ /^\$conf_centreon\['db'\] = "(.*)";$/) { $db = $1; }
+	if ($line =~ /^\$conf_centreon\['dbcstg'\] = "(.*)";$/) { $dbcstg = $1; }
 }
 close CENTREONFD;
-
-my $sqlprefix = "mysql --batch -h $hostCentstorage -u $user -p$password -D $dbnameCentstorage -e";
 
 ###############################
 # READING THE HOST FILE + PREPARING AND LAUNCH THE SQL REQUEST
@@ -176,11 +183,25 @@ my $sqlprefix = "mysql --batch -h $hostCentstorage -u $user -p$password -D $dbna
 my $sqlhostlist = "("; # var usefull for the sql request
 my $sqlrequest;
 
+
+if ($hostgroup ne "")
+{
+	# we work with a host group
+	$sqlrequest = "select host_name from hostgroup_relation, host,hostgroup where hostgroup.hg_name='$hostgroup' and hostgroup_relation.host_host_id=host.host_id and hostgroup.hg_id=hostgroup_relation.hostgroup_hg_id and host_activate='1'";
+	$sqlprefix = "mysql --batch -h $hostCentstorage -u $user -p$password -D $db -e";
+	print "DEBUG : sqlrequest = $sqlrequest\n" if $verbose;
+	print "DEBUG : sql request processing ($user\@$hostCentstorage)..." if $verbose;
+	system "$sqlprefix \"$sqlrequest;\" > $hostgroup";
+	$hostfile=$hostgroup;
+}
+
+$sqlprefix = "mysql --batch -h $hostCentstorage -u $user -p$password -D $dbcstg -e";
 open (HOSTFD, "$hostfile") or die "Can't open hostfile : $hostfile\n" ; # reading
 while (<HOSTFD>)
 {
 	$line=$_;
 	chomp($line); # delete the carriage return
+	if ($line eq "host_name") { next; } # case for hostgroup
 	$sqlhostlist = $sqlhostlist . "'$line', ";
 }
 close HOSTFD;
@@ -198,7 +219,7 @@ else
 	$sqlrequest = "SELECT host_name,service_description,metric_name,unit_name,metric_id FROM index_data,metrics WHERE host_name IN $sqlhostlist and service_description like '$servicefilter' and metric_name like '$metricfilter' and index_data.id=metrics.index_id";
 }
 
-print "DEBUG : sqlrequest = $sqlrequest $sqlrequest\n" if $verbose;
+print "DEBUG : sqlrequest = $sqlrequest\n" if $verbose;
 print "sql request processing ($user\@$hostCentstorage)..." if $verbose;
 system "$sqlprefix \"$sqlrequest;\" > sqlresult";
 print "finished\n" if $verbose;

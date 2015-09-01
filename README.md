@@ -14,7 +14,7 @@ The output report shows the average value (or percentile) and is based from data
   - rrdtool
 
 ## Options
-option --hostfile and --service are compulsory, others are optional. <br>
+option --hostfile or --hostgroup, and --service are compulsory, others are optional. <br>
 option --timerange allows to calculate average values during the Working Hours. <br>
 If no options --start or --end, the last mounth is used as the default time range.
 

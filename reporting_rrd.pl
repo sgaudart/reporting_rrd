@@ -7,32 +7,33 @@
 #          mysql client and rrdtool needed.
 #
 # INPUT : 
-#          file with several hostnames + specific service + (metric) + start time & end time
+#          host group name or hosts file + specific service + [metric + start time & end time]
 # OUTPUT :
 #          average values report (ASCII)
 #
 #======================================================================
-#   Date      Version     Numero      Auteur       Commentaires
-# 22/10/2014  1                       SGA          initial version
-# 23/10/2014  3                       SGA          function get_average_value created
-# 30/10/2014  4                       SGA          reading the host file and create the sql request
-# 30/10/2014  5                       SGA          reading the sql result and calculate the avg value
-# 31/10/2014  6                       SGA          fix a bug in the function get_average_value
-# 31/10/2014  7                       SGA          add sort for the output value + fix bug with the chr "," in xml values
-# 03/11/2014  8                       SGA          reading the conf centreon.conf.php
-# 04/11/2014  9                       SGA          add library Getopts::Long
-# 06/11/2014 10                       SGA          add options --start --end and --sort=(ascending|descending)
-# 07/11/2014 11                       SGA          format the output value with ShowValueWithColumn
-# 07/11/2014 12                       SGA          add option --top 
-# 08/11/2014 13                       SGA          modify input date format : DD-MM-YYYY
-# 14/11/2014 14                       SGA          add function ShowBorder + using @maxsizecolumn
-# 14/11/2014 15                       SGA          add function get_percentile_value
-# 24/11/2014 16                       SGA          add unit in the output report
-# 28/11/2014 17                       SGA          add option --timerange
-# 24/12/2014 18                       SGA          add option --csv
-# 20/04/2015 19                       SGA          get the name of the centreon_storage database
-# 27/04/2015 20                       SGA          change for the options --start --end optional
-# 31/08/2015 21                       SGA          add the option --hostgroup
+#   Date      Version    Auteur       Commentaires
+# 22/10/2014  1          SGA          initial version
+# 23/10/2014  3          SGA          function get_average_value created
+# 30/10/2014  4          SGA          reading the host file and create the sql request
+# 30/10/2014  5          SGA          reading the sql result and calculate the avg value
+# 31/10/2014  6          SGA          fix a bug in the function get_average_value
+# 31/10/2014  7          SGA          add sort for the output value + fix bug with the chr "," in xml values
+# 03/11/2014  8          SGA          reading the conf centreon.conf.php
+# 04/11/2014  9          SGA          add library Getopts::Long
+# 06/11/2014 10          SGA          add options --start --end and --sort=(ascending|descending)
+# 07/11/2014 11          SGA          format the output value with ShowValueWithColumn
+# 07/11/2014 12          SGA          add option --top 
+# 08/11/2014 13          SGA          modify input date format : DD-MM-YYYY
+# 14/11/2014 14          SGA          add function ShowBorder + using @maxsizecolumn
+# 14/11/2014 15          SGA          add function get_percentile_value
+# 24/11/2014 16          SGA          add unit in the output report
+# 28/11/2014 17          SGA          add option --timerange
+# 24/12/2014 18          SGA          add option --csv
+# 20/04/2015 19          SGA          get the name of the centreon_storage database
+# 27/04/2015 20          SGA          change for the options --start --end optional
+# 31/08/2015 21          SGA          add the option --hostgroup
+# 05/01/2016 22          SGA          add function ChangeDateToUnixTime
 #======================================================================
 
 use strict;
@@ -108,8 +109,8 @@ if (($help) || ($servicefilter eq "") || (($hostfile eq "") && ($hostgroup eq ""
                  [--hostfile <myhosts.txt> (text file with one hostname by line)]
                  --service <name_of_the_service>
                  [--metric <name_of_the_metric>]
-                 [--start <DD-MM-YYYY>] default : start & end date is the last month
-                 [--end <DD-MM-YYYY>] default : start & end date is the last month
+                 [--start <date>] default : start & end date is the last month
+                 [--end <date]    default : start & end date is the last month
                  [--timerange <regex with date format (date format: Fri Nov 28 14:15:33 2014)]
                  [--sort ascending|descending]
                  [--top N]
@@ -146,19 +147,17 @@ if (($start eq "") || ($end eq ""))
 	$end = "01-". $end_month . "-" . $year;
 }
 
-my ($day, $month, $year)=split("-",$start);
-$start_epoch = timelocal(0,0,0,$day,$month-1,$year);
+$start_epoch = ChangeDateToUnixTime($start);
 print "DEBUG : start=$start => start_epoch=$start_epoch\n" if $verbose;
 
-($day, $month, $year)=split("-",$end);
-$end_epoch = timelocal(0,0,0,$day,$month-1,$year);
+$end_epoch = ChangeDateToUnixTime($end);
 print "DEBUG : end=$end => end_epoch=$end_epoch\n" if $verbose;
 
 ###############################
 # READING THE CENTREON CONF FILE
 ###############################
 
-#$conf_centreon['hostCentstorage'] = "XX.YY.ZZZ.XXX";
+#$conf_centreon['hostCentstorage'] = "XX.YY.ZZ.XX";
 #$conf_centreon['user'] = "centreon";
 #$conf_centreon['password'] = "XXXXXXXXX";
 #$conf_centreon['db'] = "centreon2";
@@ -177,12 +176,11 @@ while (<CENTREONFD>)
 close CENTREONFD;
 
 ###############################
-# READING THE HOST FILE + PREPARING AND LAUNCH THE SQL REQUEST
+# READING THE HOST FILE + PREPARING THE SQL QUERY
 ###############################
 
 my $sqlhostlist = "("; # var usefull for the sql request
 my $sqlrequest;
-
 
 if ($hostgroup ne "")
 {
@@ -218,6 +216,10 @@ else
 {
 	$sqlrequest = "SELECT host_name,service_description,metric_name,unit_name,metric_id FROM index_data,metrics WHERE host_name IN $sqlhostlist and service_description like '$servicefilter' and metric_name like '$metricfilter' and index_data.id=metrics.index_id";
 }
+
+###############################
+# RUN THE SQL QUERY
+###############################
 
 print "DEBUG : sqlrequest = $sqlrequest\n" if $verbose;
 print "sql request processing ($user\@$hostCentstorage)..." if $verbose;
@@ -526,4 +528,21 @@ sub PopulateUnixTimeBoolHash
 	close XMLFD;
 	
 	system "rm -f $workdirectory/$rrdid.xml $workdirectory/$rrdid.rrd"; # cleaning files
+}
+
+sub ChangeDateToUnixTime
+{
+	my $date = $_[0]; # 1 ARG : unixtime
+	$date =~ s/\./-/g; # global substitution "." => "-"
+	$date =~ s/\//-/g; # global substitution "/" => "-"
+	
+	my ($day, $month, $year)=split("-",$date);
+	if (!(defined $year))
+	{
+		my @now = localtime(time);
+		$year = $now[5]+1900;
+	}
+	my $epoch = timelocal(0,0,0,$day,$month-1,$year);
+	
+	return $epoch;
 }

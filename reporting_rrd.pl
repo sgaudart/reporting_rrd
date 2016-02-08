@@ -121,7 +121,7 @@ if (($help) || ($servicefilter eq "") || (($hostfile eq "") && ($hostgroup eq ""
 }
 
 ###############################
-# TRANSFORM DATE DD-MM-YYYY => unix time
+# TRANSFORM DATE => unix time
 ###############################
 
 if (($start eq "") || ($end eq ""))
@@ -152,6 +152,12 @@ print "DEBUG : start=$start => start_epoch=$start_epoch\n" if $verbose;
 
 $end_epoch = ChangeDateToUnixTime($end);
 print "DEBUG : end=$end => end_epoch=$end_epoch\n" if $verbose;
+
+if ($start_epoch > $end_epoch)
+{
+	print "ERROR: start date > end date, please check your value...\n";
+	exit;
+}
 
 ###############################
 # READING THE CENTREON CONF FILE

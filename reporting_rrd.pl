@@ -4,7 +4,7 @@
 # Date   : 22/10/2014
 # But    : This script can read the RRD file from Centreon, and calculate the average for
 #          all the values. TimeRange could be possible (you can calculate average during Working Hours).
-#          mysql client and rrdtool needed.
+#          MYSQL CLIENT AND RRDTOOL BINARY NEEDED !
 #
 # INPUT : 
 #          host group name or hosts file + specific service + [metric + start time & end time]
@@ -34,6 +34,7 @@
 # 27/04/2015 20          SGA          change for the options --start --end optional
 # 31/08/2015 21          SGA          add the option --hostgroup
 # 05/01/2016 22          SGA          add function ChangeDateToUnixTime
+# 17/01/2016 23          SGA          change function get_average_value with rrdtool graph
 #======================================================================
 
 use strict;
@@ -91,7 +92,7 @@ my $db; # sql information
 my $sqlprefix = "";
 
 my $sqlline=0; # line counter
-my ($hostname, $service, $metric, $unit, $metric_id); # for reading the sql result
+my ($hostname, $service, $metric, $rrdmetric, $unit, $metric_id); # for reading the sql result
 my $value;
 my %v; # hash table for values
 my %h; # hash table for the hostname
@@ -166,8 +167,8 @@ if ($start_epoch > $end_epoch)
 #$conf_centreon['hostCentstorage'] = "XX.YY.ZZ.XX";
 #$conf_centreon['user'] = "centreon";
 #$conf_centreon['password'] = "XXXXXXXXX";
-#$conf_centreon['db'] = "centreon2";
-#$conf_centreon['dbcstg'] = "centreon2_storage";
+#$conf_centreon['db'] = "centreon";
+#$conf_centreon['dbcstg'] = "centreon_storage";
 open (CENTREONFD, "$centreon_conf") or die "Can't open centreon conf  : $centreon_conf\n" ; # reading
 while (<CENTREONFD>)
 {
@@ -255,11 +256,15 @@ while (<SQLFD>)
 	
 	if ($percentile ne 0)
 	{
-		$value=&get_percentile_value($metric_id, $percentile); # percentile case
+		$value = get_percentile_value($metric_id, $percentile); # percentile case
+	}
+	elsif ($timerange ne "") 
+	{
+		$value = get_average_value_with_timerange($metric_id); # slow execution function used rrdtool fetch
 	}
 	else
 	{
-		$value=&get_average_value($metric_id); # example => 42482
+		$value = get_average_value($metric_id); # fast execution function used rrdtool graph
 	}
 	
 	if ($value eq "nan")
@@ -270,6 +275,8 @@ while (<SQLFD>)
 	{
 		$v{$metric_id}=$value;
 	}
+	
+	# CALCULATING THE SIZE OF COLUMNS
 	if (length($v{$metric_id})+2 > $maxsizecolumn[3]) { $maxsizecolumn[3]=length($v{$metric_id})+2; }  # VALUE
 	
 	$h{$metric_id}=$hostname;
@@ -350,8 +357,23 @@ else
 if ($csv eq "") { ShowBorder(); }
 
 
-#############  FONCTIONS  #################
+###############################
+# FUNCTIONS
+###############################
+
 sub get_average_value
+{
+	# 1 ARG : metric id
+	my(@args) = @_;
+	my $rrdid = $args[0];
+	
+	# ICI COMMANDE RRDTOOL GRAPH 
+	my @result = `rrdtool graph dummy.png -s $start_epoch -e $end_epoch DEF:access=$rrd_directory/$rrdid.rrd:value:AVERAGE \"PRINT:access:AVERAGE: %5.2lf\"`;
+	chomp ($result[1]);
+	return $result[1];
+}
+
+sub get_average_value_with_timerange
 {
 	# 1 ARG : metric id
 	my(@args) = @_;
@@ -362,8 +384,7 @@ sub get_average_value
 	my $i=0; # counter = number of valid value in the RRD file
 	
 	system "cp $rrd_directory/$rrdid.rrd $workdirectory"; # copy rrd file
-	system "rrdtool fetch /tmp/$rrdid.rrd AVERAGE -r 3600 -s $start_epoch -e $end_epoch > $workdirectory/$rrdid.xml"; # cleaning file
-	#system "rrdtool fetch /tmp/$rrdid.rrd AVERAGE -s 1409522400 -e 1412114399 > $workdirectory/$rrdid.xml"; # cleaning file
+	system "rrdtool fetch /tmp/$rrdid.rrd AVERAGE -r 3600 -s $start_epoch -e $end_epoch > $workdirectory/$rrdid.xml"; # dump file
 
 	# READING THE XML FILE
 	open (XMLFD, "$workdirectory/$rrdid.xml") or die "Can't open $workdirectory/$rrdid.xml\n" ; # reading
@@ -408,8 +429,8 @@ sub get_percentile_value
 	my $result="nan";
 	
 	system "cp $rrd_directory/$rrdid.rrd $workdirectory"; # copy rrd file
-	system "rrdtool fetch /tmp/$rrdid.rrd AVERAGE -r 3600 -s $start_epoch -e $end_epoch > $workdirectory/$rrdid.xml"; # cleaning file
-	#system "rrdtool fetch /tmp/$rrdid.rrd AVERAGE -s $start_epoch -e $end_epoch > $workdirectory/$rrdid.xml"; # cleaning file
+	system "rrdtool fetch /tmp/$rrdid.rrd AVERAGE -r 3600 -s $start_epoch -e $end_epoch > $workdirectory/$rrdid.xml"; # dump file
+	#system "rrdtool fetch /tmp/$rrdid.rrd AVERAGE -s $start_epoch -e $end_epoch > $workdirectory/$rrdid.xml"; # dump file
 
 	# READING THE XML FILE
 	open (XMLFD, "$workdirectory/$rrdid.xml") or die "Can't open $workdirectory/$rrdid.xml\n" ; # reading
@@ -515,7 +536,7 @@ sub PopulateUnixTimeBoolHash
 	my $rrdid = $args[0];
 	
 	system "cp $rrd_directory/$rrdid.rrd $workdirectory"; # copy rrd file
-	system "rrdtool fetch /tmp/$rrdid.rrd AVERAGE -r 3600 -s $start_epoch -e $end_epoch > $workdirectory/$rrdid.xml"; # cleaning file
+	system "rrdtool fetch /tmp/$rrdid.rrd AVERAGE -r 3600 -s $start_epoch -e $end_epoch > $workdirectory/$rrdid.xml"; # dump file
 	#system "rrdtool fetch /tmp/$rrdid.rrd AVERAGE -s 1409522400 -e 1412114399 > $workdirectory/$rrdid.xml"; # cleaning file
 
 	# READING THE XML FILE

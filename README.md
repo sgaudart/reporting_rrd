@@ -39,7 +39,7 @@ user    0m1.099s <br>
 sys     0m1.183s <br>
 
 For 1000 devices + one selected service + one metric + time range of one month: <br>
-real    1m8.093s <br>
+real    1m8.093s <br> ==> 6 or 7 secondes since the version 23
 user    0m7.454s <br>
 sys     0m10.865s <br>
 

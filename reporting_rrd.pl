@@ -258,7 +258,7 @@ while (<SQLFD>)
 	{
 		$value = get_percentile_value($metric_id, $percentile); # percentile case
 	}
-	elsif ($timerange ne "") 
+	elsif ($timerange ne ".*") 
 	{
 		$value = get_average_value_with_timerange($metric_id); # slow execution function used rrdtool fetch
 	}

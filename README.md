@@ -7,11 +7,18 @@ The output report shows the average value (or percentile) and is based from data
   - OUTPUT : ascii report with average value
 
 
-## Requirement
+## Requirements
 
   - Perl
   - mysql client
   - rrdtool
+  - 
+
+## Tested with
+
+  - Centreon 2.5.4
+  - perl 5.10.1
+  - rrdtool 1.4.7
 
 ## Options
 option --hostfile or --hostgroup, and --service are compulsory, others are optional. <br>

@@ -12,7 +12,6 @@ The output report shows the average value (or percentile) and is based from data
   - Perl
   - mysql client
   - rrdtool
-  - 
 
 ## Tested with
 
